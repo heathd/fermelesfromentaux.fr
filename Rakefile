@@ -1,5 +1,8 @@
 require 'fileutils'
 require 'pathname'
+require 'net/http'
+require 'faraday'
+require 'json'
 
 def basedir
   Pathname.new(File.dirname(__FILE__)) + ".."
@@ -16,8 +19,10 @@ rescue Errno::ENOENT
   nil
 end
 
-def latest_revision
-  `git rev-parse HEAD`.strip
+def get_latest_revision
+  conn = Faraday.new(:url => 'https://api.github.com/')
+  response = conn.get("/repos/heathd/fermelesfromentaux.fr/git/refs/head")
+  JSON.parse(response.body).first['object']['sha']
 end
 
 task :cleanup do
@@ -35,13 +40,12 @@ task :cleanup do
 end
 
 task :get_latest_release do
-  output = `git pull`
-  raise output unless $?.success?
+  latest_revision = get_latest_revision
   if current_revision != latest_revision
     puts "Current revision: #{current_revision}"
     puts "Latest revision: #{latest_revision}"
     puts "Updating..."
-    `git archive --format tar HEAD --prefix '#{latest_revision}/' | (cd #{basedir + "releases"}; tar x)`
+    `git pull && git archive --format tar HEAD --prefix '#{latest_revision}/' | (cd #{basedir + "releases"}; tar x)`
     `ln -sfn 'releases/#{latest_revision}' '#{basedir + "current"}'`
   end
 end
